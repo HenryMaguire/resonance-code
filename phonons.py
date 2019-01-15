@@ -186,3 +186,177 @@ def RC_function_gen(H_sub, sigma, T_ph, Gamma, wRC, alpha_ph, N, silent=False,
         L_RC, Z =  liouvillian_build_new(H, A_ph, gamma, wRC, T_ph)
     return L_RC, H, A_em, A_nrwa, Z, wRC, kappa, gamma
 
+
+#### WEAK COUPLING CODE
+
+# -*- coding: utf-8 -*-
+"""
+Weak-coupling spin-boson model solution
+written in Python 2.7
+"""
+import qutip as qt
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import integrate
+from utils import *
+import sympy
+from qutip import basis
+import time
+#import ctypes
+
+
+
+def cauchyIntegrands(omega, beta, J, alpha, Gamma, omega_0, ver):
+    # J_overdamped(omega, alpha, wc)
+    # Function which will be called within another function where J, beta and
+    # the eta are defined locally
+    F = 0
+    if ver == 1:
+        F = J(omega, alpha, Gamma, omega_0)*(coth(beta*omega/2.)+1)
+    elif ver == -1:
+        F = J(omega, alpha, Gamma, omega_0)*(coth(beta*omega/2.)-1)
+    elif ver == 0:
+        F = J(omega, alpha, Gamma, omega_0)
+    return F
+
+def integral_converge(f, a, omega):
+    x = 30
+    I = 0
+    while abs(f(x))>0.001:
+        #print a, x
+        I += integrate.quad(f, a, x, weight='cauchy', wvar=omega)[0]
+        a+=30
+        x+=30
+    return I # Converged integral
+
+def Decay(omega, beta, J, alpha, Gamma, omega_0, imag_part=True):
+    G = 0
+    # Here I define the functions which "dress" the integrands so they
+    # have only 1 free parameter for Quad.
+    F_p = (lambda x: (cauchyIntegrands(x, beta, J, alpha, Gamma, omega_0, 1)))
+    F_m = (lambda x: (cauchyIntegrands(x, beta, J, alpha, Gamma, omega_0, -1)))
+    F_0 = (lambda x: (cauchyIntegrands(x, beta, J, alpha, Gamma, omega_0, 0)))
+    w='cauchy'
+    if omega>0.:
+        # These bits do the Cauchy integrals too
+        G = (np.pi/2)*(coth(beta*omega/2.)-1)*J(omega, alpha, Gamma, omega_0)
+        if imag_part:
+            G += (1j/2.)*(integral_converge(F_m, 0,omega))
+            G -= (1j/2.)*(integral_converge(F_p, 0,-omega))
+
+        #print integrate.quad(F_m, 0, n, weight='cauchy', wvar=omega), integrate.quad(F_p, 0, n, weight='cauchy', wvar=-omega)
+    elif omega==0.:
+        G = (np.pi/2)*(2*alpha/beta)
+        # The limit as omega tends to zero is zero for superohmic case?
+        if imag_part:
+            G += -(1j)*integral_converge(F_0, -1e-12,0)
+        #print (integrate.quad(F_0, -1e-12, 20, weight='cauchy', wvar=0)[0])
+    elif omega<0.:
+        G = (np.pi/2)*(coth(beta*abs(omega)/2.)+1)*J(abs(omega),alpha, Gamma, omega_0)
+        if imag_part:
+            G += (1j/2.)*integral_converge(F_m, 0,-abs(omega))
+            G -= (1j/2.)*integral_converge(F_p, 0,abs(omega))
+        #print integrate.quad(F_m, 0, n, weight='cauchy', wvar=-abs(omega)), integrate.quad(F_p, 0, n, weight='cauchy', wvar=abs(omega))
+    return G
+
+def commutate(A, A_i, anti = False):
+    if anti:
+        return qt.spre(A*A_i) - qt.sprepost(A_i,A) + qt.sprepost(A, A_i.dag()) - qt.spre(A_i.dag()*A)
+    else:
+        return qt.spre(A*A_i) - qt.sprepost(A_i,A) - qt.sprepost(A, A_i.dag()) + qt.spre(A_i.dag()*A)
+
+
+def auto_L(PARAMS, A, T, alpha):
+    eig = zip(*check.exciton_states(PARAMS))
+    L = 0
+    beta = beta_f(T)
+    for eig_i in eig:
+        for eig_j in eig:
+            omega = eig_i[0]-eig_j[0]
+            A_ij = eig_i[1]*eig_j[1].dag()*A.matrix_element(eig_i[1].dag(), eig_j[1])
+            L += Gamma(omega, beta, J_underdamped, alpha, PARAMS['wc'], imag_part=False) * commutate(A, A_ij)
+            # Imaginary part
+            G = Gamma(omega, beta, J_underdamped, alpha, PARAMS['wc'], imag_part=True)
+            print G
+            L += G.imag * commutate(A, A_ij, anti=True)
+    return -0.5*L
+
+
+def exciton_states(PARS):
+    w_1, w_2, V, bias = PARS['w_1'], PARS['w_2'],PARS['V'], PARS['bias']
+    v_p, v_m = 0, 0
+    eta = np.sqrt(4*(V**2)+bias**2)
+    lam_p = w_2+(bias+eta)*0.5
+    lam_m = w_2+(bias-eta)*0.5
+    v_m = np.array([ -(w_1-lam_p)/V, -1])
+    #v_p/= /(1+(V/(w_2-lam_m))**2)
+    v_m/= np.sqrt(np.dot(v_m, v_m))
+    v_p = np.array([V/(w_2-lam_m),1.])
+
+    v_p /= np.sqrt(np.dot(v_p, v_p))
+    #print  np.dot(v_p, v_m) < 1E-15
+    return [lam_m, lam_p], [qt.Qobj(v_m), qt.Qobj(v_p)]
+
+def L_weak_phonon_SES(PARAMS, silent=False):
+    ti = time.time()
+    w_1 = PARAMS['w_1']
+    w_2 = PARAMS['w_2']
+    OO = basis(3,0)
+
+    eps = PARAMS['bias']
+    V = PARAMS['V']
+
+    energies, states = exciton_states(PARAMS)
+    psi_m = states[0]
+    psi_p = states[1]
+    eta = np.sqrt(eps**2 + 4*V**2)
+
+    PARAMS['beta_1'] = beta_1 = beta_f(PARAMS['T_1'])
+    PARAMS['beta_2'] = beta_2 = beta_f(PARAMS['T_2'])
+    MM = psi_m*psi_m.dag()
+    PP = psi_p*psi_p.dag()
+    MP = psi_m*psi_p.dag()
+    PM = psi_p*psi_m.dag()
+    J = J_underdamped
+    site_1 = (0.5*((eta-eps)*MM + (eta+eps)*PP) +V*(PM + MP))/eta
+    Z_1 = (Decay(0, beta_1, J, PARAMS['alpha_1'], PARAMS['Gamma_1'], PARAMS['w0_1'])*((eta-eps)*MM + (eta+eps)*PP))/(2.*eta)
+    Z_1 += (V/eta)*Decay(eta, beta_1, J, PARAMS['alpha_1'], PARAMS['Gamma_1'], PARAMS['w0_1'])*PM
+    Z_1 += (V/eta)*Decay(-eta, beta_1, J, PARAMS['alpha_1'], PARAMS['Gamma_1'], PARAMS['w0_1'])*MP
+    site_2 = (0.5*((eta+eps)*MM + (eta-eps)*PP) -V*(PM + MP))/eta
+
+    Z_2 = (Decay(0, beta_2, J, PARAMS['alpha_2'], PARAMS['Gamma_2'], PARAMS['w0_2'])*((eta+eps)*MM + (eta-eps)*PP))/(2.*eta)
+    Z_2 -= (V/eta)*Decay(eta, beta_2, J, PARAMS['alpha_2'], PARAMS['Gamma_2'], PARAMS['w0_2'])*PM
+    Z_2 -= (V/eta)*Decay(-eta, beta_2, J, PARAMS['alpha_2'], PARAMS['Gamma_2'], PARAMS['w0_2'])*MP
+    # Initialise liouvilliian
+    L =  qt.spre(site_1*Z_1) - qt.sprepost(Z_1, site_1)
+    L += qt.spost(Z_1.dag()*site_1) - qt.sprepost(site_1, Z_1.dag())
+    L +=  qt.spre(site_2*Z_2) - qt.sprepost(Z_2, site_2)
+    L += qt.spost(Z_2.dag()*site_2) - qt.sprepost(site_2, Z_2.dag())
+    # Second attempt
+    #print site_1, site_2
+    if not silent:
+        print "Weak coupling Liouvillian took {:0.2f} seconds".format(time.time()-ti)
+    return -L
+
+def get_wc_H_and_L(H_sub, sigma, T_ph, Gamma, wRC, alpha_ph, N, w_laser=0.,silent=False):
+    import optical as opt
+    w_1 = PARAMS['w_1']
+    w_2 = PARAMS['w_2']
+    OO, XO, OX = basis(3,0), basis(3,1), basis(3,2)
+    sigma_m1 =  OO*XO.dag()
+    sigma_m2 =  OO*OX.dag()
+    eps = PARAMS['bias']
+    V = PARAMS['V']
+    H = w_1*XO*XO.dag() + w_2*OX*OX.dag() + V*(OX*XO.dag() + XO*OX.dag())
+    L = L_weak_phonon_SES(PARAMS, silent=False)
+    N_1 = PARAMS['N_1']
+    N_2 = PARAMS['N_2']
+    exc = PARAMS['exc']
+    mu = PARAMS['mu']
+
+    sigma = sigma_m1 + mu*sigma_m2
+    
+    if abs(PARAMS['alpha_EM'])>0:
+        L += opt.L_BMME(H, sigma, PARAMS, ME_type='nonsecular', site_basis=True, silent=silent)
+    
+    return H, L
