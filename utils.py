@@ -55,16 +55,17 @@ def beta_f(T):
         beta = 1. / (conversion*T)
     return beta
 
-def J_poly(omega, Gamma, omega_0, ohmicity=1):
+def J_poly(omega, Gamma, omega_0, ohmicity=1, alpha=0.):
+    # this won't work here
     return Gamma*(omega**ohmicity)/(2*np.pi*(omega_0**ohmicity))
 
-def J_multipolar(omega, Gamma, omega_0):
+def J_multipolar(omega, Gamma, omega_0, alpha=0.):
     if omega==omega_0:
         return Gamma/(2*np.pi)
     else:
         return Gamma*(omega**3)/(2*np.pi*(omega_0**3))
 
-def J_minimal(omega, Gamma, omega_0):
+def J_minimal(omega, Gamma, omega_0, alpha=0.):
     if omega==omega_0:
         return Gamma/(2*np.pi)
     else:
@@ -76,14 +77,23 @@ def J_minimal_hard(omega, Gamma, omega_0, cutoff):
     else:
         return 0.
 
+def J_RC(omega, gamma, omega_0):
+    return gamma*omega
+
 def J_flat(omega, Gamma, omega_0):
     return Gamma
 
-def J_overdamped(omega, alpha, wc):
-    return alpha*wc*omega/(omega**2+wc**2)
+#def J_overdamped(omega, alpha, wc):
+#    return alpha*wc*omega/(omega**2+wc**2)
 
-def J_underdamped(omega, alpha, Gamma, omega_0):
+
+"""def J_underdamped(omega, Gamma, omega_0, alpha=0.):
     return alpha*Gamma*pow(omega_0,2)*omega/(pow(pow(omega_0,2)-pow(omega,2),2)+(Gamma**2 *omega**2))
+"""
+
+def J_underdamped(omega, Gamma, omega_0, alpha=0.):
+    return alpha*Gamma*(omega_0**2)*omega/(((omega_0**2)-(omega**2))**2+(Gamma*omega)**2)
+
 
 def rate_up(w, n, gamma, J, w_0):
     rate = 0.5 * pi * n * J(w, gamma, w_0)
@@ -148,3 +158,16 @@ def initialise_TLS(init_sys, init_RC, states, w0, T_ph, H_RC=np.ones((2,2))):
         num = (-H_RC*beta_f(T_ph)).expm()
         init_rho =  num/num.tr()
     return init_rho
+
+def exciton_states(epsilon, w_laser, Omega):
+    w_1, w_2, V = 0, epsilon-w_laser, Omega/2
+    
+    eps = -(w_1-w_2)
+    print eps
+    eta = np.sqrt(eps**2 + 4*(V**2))
+    lam_m = ((w_2+eps)+w_2-eta)*0.5
+    lam_p = ((w_2+eps)+w_2+eta)*0.5
+    v_p = qt.Qobj(np.array([np.sqrt(eta+eps), np.sqrt(eta-eps)]))/np.sqrt(2*eta)
+    v_m = qt.Qobj(np.array([np.sqrt(eta-eps), -np.sqrt(eta+eps)]))/np.sqrt(2*eta)
+
+    return [lam_m, lam_p], [v_m, v_p]

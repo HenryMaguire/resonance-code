@@ -48,7 +48,9 @@ def Ham_RC_gen(H_sub, sigma, Omega, kappa, N, rotating=False, shift = True, shif
     a = destroy(N)
     energy_shift = (kappa**2)/Omega 
     I_sys = Qobj(qeye(H_sub.shape[0]),dims=sigma.dims)
-    if shift and shift_op is not None:
+    if shift_op is None:
+        shift_op = sigma.dag()*sigma
+    if shift:
         H_sub += shift_op*energy_shift
     if rotating:
         # Hopefully removes energy scale. Shift operator should be the same as
@@ -58,7 +60,7 @@ def Ham_RC_gen(H_sub, sigma, Omega, kappa, N, rotating=False, shift = True, shif
     H_S += tensor(I_sys, Omega*a.dag()*a)
     A_em = tensor(sigma, qeye(N))
     A_nrwa = tensor(sigma+sigma.dag(), qeye(N))
-    A_ph = tensor(I_sys, (a + a.dag()))
+    A_ph = tensor(I_sys, a)
     return H_S, A_em, A_nrwa, A_ph
 
 
@@ -161,30 +163,41 @@ def RC_function_UD(sigma, eps, T_ph, Gamma, wRC, alpha_ph, N, silent=False,
         L_RC, Z =  liouvillian_build(H, A_ph, gamma, wRC, T_ph)
     return L_RC, H, A_em, A_nrwa, Z, wRC, kappa, Gamma
 
+def mapped_constants(w0, alpha_ph, Gamma):
+    gamma = Gamma / (2. * np.pi * w0)  # coupling between RC and residual bath
+    kappa= np.sqrt(np.pi * alpha_ph * w0 / 2.)  # coupling strength between the TLS and RC
+    return w0, gamma, kappa
 
-def RC_function_gen(H_sub, sigma, T_ph, Gamma, wRC, alpha_ph, N, silent=False,
+def mapped_operators_and_constants(H_sub, sigma, T_ph, Gamma, Omega, alpha_ph, N, 
+                                    w_laser=0., shift=True, shift_op=None):
+    wRC, gamma, kappa = mapped_constants(Omega, alpha_ph, Gamma)
+    H, A_em, A_nrwa, A_ph = Ham_RC_gen(H_sub, sigma, wRC, kappa, N,
+                                        shift_op=shift_op, shift=shift, 
+                                        w_laser=w_laser)
+    return H, A_em, A_ph, wRC, gamma, kappa
+
+                                    
+def RC_mapping_general(H_sub, sigma, T_ph, Gamma, Omega, alpha_ph, N, silent=False,
                                             residual_off=False, rotating=False,
                                             shift_op = None, shift=True, new=False, w_laser=0.):
     
     # we define all of the RC parameters by the underdamped spectral density
-    gamma = Gamma / (2. * np.pi * wRC)  # coupling between RC and residual bath
-    if residual_off:
-        gamma=0
-    kappa= np.sqrt(np.pi * alpha_ph * wRC / 2.)  # coupling strength between the TLS and RC
+    wRC, gamma, kappa = mapped_constants(Omega, alpha_ph, Gamma)
 
     if not silent:
-        print "w_RC={} | RC-res. coupling={:0.2f} | TLS-RC coupling={:0.2f} | Gamma_RC={:0.2f} | alpha_ph={:0.2f} | N={} |".format(wRC, gamma,  kappa, Gamma, alpha_ph, N)
+        print "w_RC={} | RC-res. coupling={:0.4f} | TLS-RC coupling={:0.2f} | Gamma_RC={:0.2f} | alpha_ph={:0.2f} | N={} |".format(wRC, gamma,  kappa, Gamma, alpha_ph, N)
     if shift_op is None:
         shift_op = sigma.dag()*sigma
+        
     H, A_em, A_nrwa, A_ph = Ham_RC_gen(H_sub, sigma, wRC, kappa, N,
                                         rotating=rotating,
                                         shift_op=shift_op, shift=shift, 
                                         w_laser=w_laser)
     if not new:
-        L_RC, Z =  liouvillian_build(H, A_ph, gamma, wRC, T_ph)
+        L_RC, Z =  liouvillian_build(H, A_ph+A_ph.dag(), gamma, wRC, T_ph)
     else:
-        L_RC, Z =  liouvillian_build_new(H, A_ph, gamma, wRC, T_ph)
-    return L_RC, H, A_em, A_nrwa, Z, wRC, kappa, gamma
+        L_RC, Z =  liouvillian_build_new(H, A_ph+A_ph.dag(), gamma, wRC, T_ph)
+    return L_RC, H, A_em, A_ph, Z, wRC, kappa, gamma
 
 
 #### WEAK COUPLING CODE
