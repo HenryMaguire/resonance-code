@@ -370,6 +370,32 @@ def get_wc_H_and_L(H_sub, sigma, T_ph, Gamma, wRC, alpha_ph, N, w_laser=0.,silen
     sigma = sigma_m1 + mu*sigma_m2
     
     if abs(PARAMS['alpha_EM'])>0:
+        print "YES"
         L += opt.L_BMME(H, sigma, PARAMS, ME_type='nonsecular', site_basis=True, silent=silent)
     
     return H, L
+
+def L_WC(epsilon, Omega, J, T):
+    L = 0 # Initialise liouvilliian
+    Z = 0 # initialise operator Z
+    #beta = 1 /(T* 0.695)
+    beta = 7.683/T
+    eta = np.sqrt(epsilon**2 + Omega**2)
+    # Here I define the eigenstates of the H_s
+    H = qt.Qobj([[-epsilon/2., Omega/2],[Omega/2, epsilon/2.]])
+    eVecs = H.eigenstates()[1]
+    psi_p = (1/np.sqrt(2*eta))*(np.sqrt(eta-epsilon)*qt.basis(2,0) + np.sqrt(eta+epsilon)*qt.basis(2,1))
+    psi_m = (-1/np.sqrt(2*eta))*(np.sqrt(eta+epsilon)*qt.basis(2,0) - np.sqrt(eta-epsilon)*qt.basis(2,1))
+
+    #print H.eigenstates()
+    # Jake's eigenvectors
+    #psi_p = (1/np.sqrt(2*eta))*(np.sqrt(eta+epsilon)*qt.basis(2,0) - np.sqrt(eta-epsilon)*qt.basis(2,1))
+    #psi_m = (1/np.sqrt(2*eta))*(np.sqrt(eta-epsilon)*qt.basis(2,0) + np.sqrt(eta+epsilon)*qt.basis(2,1))
+
+    sigma_z = (1/eta)*(epsilon*(psi_p*psi_p.dag()-psi_m*psi_m.dag()) + delta*(psi_p*psi_m.dag() + psi_m*psi_p.dag()))
+
+    Z = (1/eta)*(epsilon*(psi_p*psi_p.dag()-psi_m*psi_m.dag() )*Gamma(0, beta, J) + delta*(Gamma(eta, beta, J)*psi_p*psi_m.dag() + Gamma(-eta,beta, J)*psi_m*psi_p.dag()))
+
+    L +=  qt.spre(sigma_z*Z) - qt.sprepost(Z, sigma_z)
+    L += qt.spost(Z.dag()*sigma_z) - qt.sprepost(sigma_z, Z.dag())
+    return -L

@@ -91,7 +91,7 @@ def cauchyIntegrands(omega, beta, J, Gamma, w0, ver, alpha=0.):
 def int_conv(f, a, inc, omega):
         x = inc
         I = 0.
-        while abs(f(x))>1E-9:
+        while abs(f(x))>1E-5:
             #print ince x, f(x), a, omega
             I += integrate.quad(f, a, x, weight='cauchy', wvar=omega)[0]
             a+=inc
