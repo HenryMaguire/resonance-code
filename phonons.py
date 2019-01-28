@@ -17,6 +17,7 @@ import numpy as np
 import scipy as sp
 from qutip import destroy, tensor, qeye, spre, spost, sprepost, Qobj
 from utils import Coth, beta_f
+from numpy import sqrt
 
 
 #import pdb; pdb.set_trace()
@@ -39,19 +40,16 @@ def Ham_RC(sigma, eps, Omega, kappa, N, rotating=False):
     A_ph = tensor(I_sys, (a + a.dag()))
     return H_S, A_em, A_nrwa, A_ph
 
-def Ham_RC_gen(H_sub, sigma, Omega, kappa, N, rotating=False, shift = True, shift_op=None, w_laser=0.):
+def Ham_RC_gen(H_sub, sigma, Omega, kappa, N, rotating=False, shift = 0., shift_op=None, w_laser=0.):
     """
     will only work for spin-boson like models
     Input: System Hamiltonian, RC freq., system-RC coupling and Hilbert space dimension
     Output: Hamiltonian, sigma_- and sigma_z in the vibronic Hilbert space
     """
     a = destroy(N)
-    energy_shift = (kappa**2)/Omega 
     I_sys = Qobj(qeye(H_sub.shape[0]),dims=sigma.dims)
-    if shift_op is None:
-        shift_op = sigma.dag()*sigma
-    if shift:
-        H_sub += shift_op*energy_shift
+    print "shit is ", shift
+    H_sub += shift_op*shift # shift is zero if no shift is required
     if rotating:
         # Hopefully removes energy scale. Shift operator should be the same as
         # the site energy-scale operator.
@@ -163,10 +161,22 @@ def RC_function_UD(sigma, eps, T_ph, Gamma, wRC, alpha_ph, N, silent=False,
         L_RC, Z =  liouvillian_build(H, A_ph, gamma, wRC, T_ph)
     return L_RC, H, A_em, A_nrwa, Z, wRC, kappa, Gamma
 
+def underdamped_shift(alpha, Gamma, w0):
+    sfactor = sqrt(Gamma**2 -4*w0**2)
+    denom = sqrt(2)*(sqrt(Gamma**2 - 2*w0**2 - Gamma*sfactor)+sqrt(
+                        Gamma**2 - 2*w0**2 + Gamma*sfactor))
+    return pi*alpha*Gamma/denom
+
+
 def mapped_constants(w0, alpha_ph, Gamma):
     gamma = Gamma / (2. * np.pi * w0)  # coupling between RC and residual bath
     kappa= np.sqrt(np.pi * alpha_ph * w0 / 2.)  # coupling strength between the TLS and RC
-    return w0, gamma, kappa
+    if Gamma>= 2*w0:
+        shift = underdamped_shift(alpha_ph, Gamma, w0)
+    else:
+        print "Gamma must >= 2 w0, but Gamma={} and w0={}. Proceeding without shift.".format(Gamma, w0)
+        shift = 0.
+    return w0, gamma, kappa, shift
 
 def mapped_operators_and_constants(H_sub, sigma, T_ph, Gamma, Omega, alpha_ph, N, 
                                     w_laser=0., shift=True, shift_op=None):
@@ -182,13 +192,16 @@ def RC_mapping_general(H_sub, sigma, T_ph, Gamma, Omega, alpha_ph, N, silent=Fal
                                             shift_op = None, shift=True, new=False, w_laser=0.):
     
     # we define all of the RC parameters by the underdamped spectral density
-    wRC, gamma, kappa = mapped_constants(Omega, alpha_ph, Gamma)
+    wRC, gamma, kappa, energy_shift = mapped_constants(Omega, alpha_ph, Gamma)
 
     if not silent:
         print "w_RC={} | RC-res. coupling={:0.4f} | TLS-RC coupling={:0.2f} | Gamma_RC={:0.2f} | alpha_ph={:0.2f} | N={} |".format(wRC, gamma,  kappa, Gamma, alpha_ph, N)
     if shift_op is None:
         shift_op = sigma.dag()*sigma
-        
+    if shift:
+        shift = energy_shift
+    else:
+        shift = 0.
     H, A_em, A_nrwa, A_ph = Ham_RC_gen(H_sub, sigma, wRC, kappa, N,
                                         rotating=rotating,
                                         shift_op=shift_op, shift=shift, 

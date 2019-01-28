@@ -153,7 +153,6 @@ def L_non_rwa(H_vib, A, w_0, Gamma, T_EM, J, principal=False,
                                 silent=False, alpha=0.):
     ti = time.time()
     beta = beta_f(T_EM)
-
     eVals, eVecs = H_vib.eigenstates()
     #J=J_minimal # J_minimal(omega, Gamma, omega_0)
     d_dim = len(eVals)
@@ -163,6 +162,7 @@ def L_non_rwa(H_vib, A, w_0, Gamma, T_EM, J, principal=False,
             eta = eVals[i]-eVals[j]
             s = eVecs[i]*(eVecs[j].dag())
             #print A.matrix_element(eVecs[i].dag(), eVecs[j])
+            overlap = A.matrix_element(eVecs[i].dag(), eVecs[j])
             s*= A.matrix_element(eVecs[i].dag(), eVecs[j])
             s*= DecayRate(eta, beta, J, Gamma, w_0, imag_part=principal, alpha=alpha)
             G+=s
