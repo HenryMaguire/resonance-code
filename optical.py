@@ -88,22 +88,22 @@ def cauchyIntegrands(omega, beta, J, Gamma, w0, ver, alpha=0.):
         F = J(omega, Gamma, w0, alpha=alpha)
     return F
 
-def int_conv(f, a, inc, omega):
+def int_conv(f, a, inc, omega, tol=1E-5):
         x = inc
         I = 0.
-        while abs(f(x))>1E-5:
+        while abs(f(x))>tol:
             #print ince x, f(x), a, omega
             I += integrate.quad(f, a, x, weight='cauchy', wvar=omega)[0]
             a+=inc
             x+=inc
             #time.sleep(0.1)
-        print "Integral converged to {} with step size of {}".format(I, inc)
+        #print(("Integral converged to {} with step size of {}".format(I, inc)))
         return I # Converged integral
 
-def integral_converge(f, a, omega):
+def integral_converge(f, a, omega, tol=1e-5):
     for inc in [200., 100., 50., 25., 10, 5., 1, 0.5]:
         try:
-            return int_conv(f, a, inc, omega)
+            return int_conv(f, a, inc, omega, tol=tol)
         except:
             if inc == 0.5:
                 raise ValueError("Integrals couldn't converge")
@@ -112,7 +112,7 @@ def integral_converge(f, a, omega):
                 
     
 
-def DecayRate(omega, beta, J, Gamma, w0, imag_part=True, c=1, alpha=0.):
+def DecayRate(omega, beta, J, Gamma, w0, imag_part=True, tol=1e-5, alpha=0.):
     G = 0
     # Here I define the functions which "dress" the integrands so they
     # have only 1 free parameter for Quad.
@@ -124,54 +124,55 @@ def DecayRate(omega, beta, J, Gamma, w0, imag_part=True, c=1, alpha=0.):
         # These bits do the Cauchy integrals too
         G = (np.pi/2)*(coth(beta*omega/2.)-1)*J(omega, Gamma, w0, alpha=alpha)
         if imag_part:
-            G += (1j/2.)*(integral_converge(F_m, 0,omega))
-            G -= (1j/2.)*(integral_converge(F_p, 0,-omega))
+            G += (1j/2.)*(integral_converge(F_m, 0,omega, tol=tol))
+            G -= (1j/2.)*(integral_converge(F_p, 0,-omega, tol=tol))
 
         #print integrate.quad(F_m, 0, n, weight='cauchy', wvar=omega), integrate.quad(F_p, 0, n, weight='cauchy', wvar=-omega)
     elif omega==0.:
         if J == J_underdamped:
+            #print("USING UNDERDAMPED SD")
             G = (pi*alpha*Gamma)/(beta*(w0**2))
         elif J == J_multipolar:
             G=0.
         else:
-            print "Assuming J_minimal"
+            print("Assuming J_minimal")
             G = (np.pi/2)*(2*Gamma/beta)
             # G = Gamma/(2*beta*w0)
         # The limit as omega tends to zero is zero for superohmic case?
         if imag_part:
-            G += -(1j)*integral_converge(F_0, -1e-12,0.)
+            G += -(1j)*integral_converge(F_0, -1e-12,0., tol=tol)
         #print (integrate.quad(F_0, -1e-12, 20, weight='cauchy', wvar=0)[0])
     elif omega<0.:
         G = (np.pi/2)*(coth(beta*abs(omega)/2.)+1)*J(abs(omega),Gamma, w0, alpha=alpha)
         if imag_part:
-            G += (1j/2.)*integral_converge(F_m, 0,-abs(omega))
-            G -= (1j/2.)*integral_converge(F_p, 0,abs(omega))
+            G += (1j/2.)*integral_converge(F_m, 0,-abs(omega), tol=tol)
+            G -= (1j/2.)*integral_converge(F_p, 0,abs(omega), tol=tol)
         #print integrate.quad(F_m, 0, n, weight='cauchy', wvar=-abs(omega)), integrate.quad(F_p, 0, n, weight='cauchy', wvar=abs(omega))
     return G
 
 def L_non_rwa(H_vib, A, w_0, Gamma, T_EM, J, principal=False, 
-                                silent=False, alpha=0.):
+                                silent=False, alpha=0., tol=1e-5):
     ti = time.time()
     beta = beta_f(T_EM)
     eVals, eVecs = H_vib.eigenstates()
     #J=J_minimal # J_minimal(omega, Gamma, omega_0)
     d_dim = len(eVals)
     G = 0
-    for i in xrange(d_dim):
-        for j in xrange(d_dim):
+    for i in range(d_dim):
+        for j in range(d_dim):
             eta = eVals[i]-eVals[j]
             s = eVecs[i]*(eVecs[j].dag())
             #print A.matrix_element(eVecs[i].dag(), eVecs[j])
             overlap = A.matrix_element(eVecs[i].dag(), eVecs[j])
             s*= A.matrix_element(eVecs[i].dag(), eVecs[j])
-            s*= DecayRate(eta, beta, J, Gamma, w_0, imag_part=principal, alpha=alpha)
+            s*= DecayRate(eta, beta, J, Gamma, w_0, imag_part=principal, alpha=alpha, tol=tol)
             G+=s
     G_dag = G.dag()
     # Initialise liouvilliian
     L =  qt.spre(A*G) - qt.sprepost(G, A)
     L += qt.spost(G_dag*A) - qt.sprepost(A, G_dag)
     if not silent:
-        print "Calculating non-RWA Liouvilliian took {} seconds.".format(time.time()-ti)
+        print(("Calculating non-RWA Liouvilliian took {} seconds.".format(time.time()-ti)))
     return -L
 
 def RWA_system_ops(H_vib, S):
@@ -243,7 +244,7 @@ def L_nonsecular(H_vib, A, eps, Gamma, T, J,
     L = spre(A*X1) -sprepost(X1,A)+spost(X2*A)-sprepost(A,X2)
     L+= spre(A.dag()*X3)-sprepost(X3, A.dag())+spost(X4*A.dag())-sprepost(A.dag(), X4)
     if not silent:
-        print "It took ", time.time()-ti, " seconds to build the Non-secular RWA Liouvillian"
+        print(("It took ", time.time()-ti, " seconds to build the Non-secular RWA Liouvillian"))
     return -0.5*L
 
 
@@ -273,7 +274,7 @@ def L_nonsecular_old(H_vib, A, eps, Gamma, T, J, time_units='cm', silent=False):
     L = spre(A*X1) -sprepost(X1,A)+spost(X2*A)-sprepost(A,X2)
     L+= spre(A.dag()*X3)-sprepost(X3, A.dag())+spost(X4*A.dag())-sprepost(A.dag(), X4)
     if not silent:
-        print "It took ", time.time()-ti, " seconds to build the Non-secular RWA Liouvillian"
+        print(("It took ", time.time()-ti, " seconds to build the Non-secular RWA Liouvillian"))
     return -0.5*L
 
 def L_full_secular(H_vib, A, eps, Gamma, T, J, time_units='cm', silent=False):
@@ -322,8 +323,8 @@ def L_full_secular(H_vib, A, eps, Gamma, T, J, time_units='cm', silent=False):
                         if abs(r_down*coeff_2)>0:
                             L+= r_down*coeff_2*(spost(QP*LM)-sprepost(LM, QP))
     if not silent:
-        print "It took ", time.time()-ti, " seconds to build the secular Liouvillian"
-        print "Secular approximation kept {:0.2f}% of total ME terms. \n".format(100*float(terms)/(d*d*d*d))
+        print(("It took ", time.time()-ti, " seconds to build the secular Liouvillian"))
+        print(("Secular approximation kept {:0.2f}% of total ME terms. \n".format(100*float(terms)/(d*d*d*d))))
     return -L
 
 def L_vib_lindblad(H_vib, A, eps, Gamma, T, J, time_units='cm', silent=False):
@@ -364,7 +365,7 @@ def L_vib_lindblad(H_vib, A, eps, Gamma, T, J, time_units='cm', silent=False):
                 L += lam_ij_sq*(0.5*(T1 + T2) - T3)
                 l+=1
     if not silent:
-        print "It took ", time.time()-ti, " seconds to build the vibronic Lindblad Liouvillian"
+        print(("It took ", time.time()-ti, " seconds to build the vibronic Lindblad Liouvillian"))
     return -L
 
 def L_EM_lindblad(splitting, col_em, Gamma, T, J, time_units='cm', silent=False):
@@ -375,5 +376,5 @@ def L_EM_lindblad(splitting, col_em, Gamma, T, J, time_units='cm', silent=False)
     L+= 2*np.pi*J(splitting, Gamma, splitting)*(EMnb+1)*(sprepost(col_em, col_em.dag())-0.5*(spre(col_em.dag()*col_em) +spost(col_em.dag()*col_em)))
     L+= 2*np.pi*J(splitting, Gamma, splitting)*EMnb*(sprepost(col_em.dag(), col_em)-0.5*(spre(col_em*col_em.dag())+ spost(col_em*col_em.dag())))
     if not silent:
-        print "It took ", time.time()-ti, " seconds to build the electronic-Lindblad Liouvillian"
+        print(("It took ", time.time()-ti, " seconds to build the electronic-Lindblad Liouvillian"))
     return L

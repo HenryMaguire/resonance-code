@@ -4,8 +4,9 @@ import scipy as sp
 from qutip import spre, spost, sprepost
 import qutip as qt
 import pickle
+import sympy
 
-print "utils imported"
+print( "utils imported")
 
 ev_to_inv_cm = 8065.5
 inv_ps_to_inv_cm = 5.309
@@ -18,9 +19,11 @@ def save_obj(obj, name ):
     with open(name + '.pickle', 'wb') as f:
         pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
 
-def Coth(x):
-    return (np.exp(2*x)+1)/(np.exp(2*x)-1)
+#def Coth(x):
+#    return (np.exp(2*x)+1)/(np.exp(2*x)-1)
 
+def Coth(x):
+    return float(sympy.coth(x))
 
 def Occupation(omega, T, time_units='cm'):
     conversion = 0.695
@@ -137,7 +140,7 @@ def initialise_TLS(init_sys, init_RC, states, w0, T_ph, H_RC=np.ones((2,2))):
         #coherence state
         if type(init_RC) == tuple:
             # take in a 2-tuple to initialise in coherence state.
-            print init_sys, init_RC
+            print(( init_sys, init_RC))
             rho_left = states[concat_list[init_sys[0]][init_RC[0]]]
             rho_right = states[concat_list[init_sys[1]][init_RC[1]]].dag()
             init_rho = rho_left*rho_right
@@ -159,15 +162,35 @@ def initialise_TLS(init_sys, init_RC, states, w0, T_ph, H_RC=np.ones((2,2))):
         init_rho =  num/num.tr()
     return init_rho
 
-def exciton_states(epsilon, w_laser, Omega):
-    w_1, w_2, V = 0, epsilon-w_laser, Omega/2
-    
-    eps = -(w_1-w_2)
-    print eps
-    eta = np.sqrt(eps**2 + 4*(V**2))
-    lam_m = ((w_2+eps)+w_2-eta)*0.5
-    lam_p = ((w_2+eps)+w_2+eta)*0.5
+def exciton_states(detuning, Omega, shift=0.):
+    detuning+=shift
+    eps = detuning
+    eta = np.sqrt(eps**2 + (Omega**2))
+    lam_m = (-detuning-eta)*0.5
+    lam_p = (-detuning+eta)*0.5
     v_p = qt.Qobj(np.array([np.sqrt(eta+eps), np.sqrt(eta-eps)]))/np.sqrt(2*eta)
     v_m = qt.Qobj(np.array([np.sqrt(eta-eps), -np.sqrt(eta+eps)]))/np.sqrt(2*eta)
 
     return [lam_m, lam_p], [v_m, v_p]
+
+def fourier(timelist, signal, absval=False):
+    spec = sp.fftpack.fft(signal)
+    dt = timelist[1]-timelist[0]
+    freq = 2 * pi * np.array(sp.fftpack.fftfreq(spec.size, dt))
+    spec = 2 * dt* np.real(spec)
+    if absval:
+        spec = 2 * dt* np.abs(spec)
+    return freq, spec
+
+def plot_fourier(tlist, signal, vline=None, absval=False, x_lim = None):
+    plt.figure()
+    freq, spec = fourier(tlist, signal-signal[-1], absval=absval)
+    freq, spec = zip(*sorted(zip(freq, np.array(spec).real)))
+    plt.plot(freq, spec)
+    if vline is not None:
+        plt.axvline(vline, ls='dotted')
+    if x_lim is not None:
+        plt.xlim(-x_lim, x_lim)
+    else:
+        plt.xlim(freq[0], freq[-1])
+    plt.show()

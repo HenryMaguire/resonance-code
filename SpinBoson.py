@@ -40,7 +40,7 @@ def Gamma(omega, beta, J):
     F_m = (lambda x: (cauchyIntegrands(x, beta, J, -1)))
     F_0 = (lambda x: (cauchyIntegrands(x, beta, J, 0)))
     n = 21
-    print "Cauchy int. convergence checks: ", F_0(4*n), F_m(4*n), F_p(4*n)
+    print(("Cauchy int. convergence checks: ", F_0(4*n), F_m(4*n), F_p(4*n)))
     w='cauchy'
     if omega>0.:
         # These bits do the Cauchy integrals too
