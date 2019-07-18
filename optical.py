@@ -89,16 +89,16 @@ def cauchyIntegrands(omega, beta, J, Gamma, w0, ver, alpha=0.):
     return F
 
 def int_conv(f, a, inc, omega, tol=1E-5):
-        x = inc
-        I = 0.
-        while abs(f(x))>tol:
-            #print ince x, f(x), a, omega
-            I += integrate.quad(f, a, x, weight='cauchy', wvar=omega)[0]
-            a+=inc
-            x+=inc
-            #time.sleep(0.1)
-        #print(("Integral converged to {} with step size of {}".format(I, inc)))
-        return I # Converged integral
+    x = inc
+    I = 0.
+    while abs(f(x))>tol:
+        #print ince x, f(x), a, omega
+        I += integrate.quad(f, a, x, weight='cauchy', wvar=omega)[0]
+        a+=inc
+        x+=inc
+        #time.sleep(0.1)
+    #print(("Integral converged to {} with step size of {}".format(I, inc)))
+    return I # Converged integral
 
 def integral_converge(f, a, omega, tol=1e-5):
     for inc in [200., 100., 50., 25., 10, 5., 1, 0.5]:
